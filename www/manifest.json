@@ -1,6 +1,6 @@
 {
-  "name": "PWA App",
-  "short_name": "PWA App",
+  "name": "員数アプリ",
+  "short_name": "員数アプリ",
   "description": "This is a PWA Minimum Template",
   "icons": [{
     "src": "images/icons/icon-48x48.png",
