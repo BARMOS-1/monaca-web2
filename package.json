@@ -1,0 +1,38 @@
+{
+  "name": "onsenui-v2-react-minimum-vite",
+  "version": "2.1.4",
+  "description": "",
+  "engines": {
+    "node": ">=18.16"
+  },
+  "dependencies": {
+    "monaca-plugin-monaca-core": "3.3.1",
+    "onsenui": "2.12.8",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-onsenui": "1.13.3"
+  },
+  "scripts": {
+    "monaca:preview": "npm run dev & npm run watch",
+    "monaca:transpile": "npm run build",
+    "monaca:debug": "npm run watch",
+    "dev": "cross-env NODE_ENV=development vite",
+    "watch": "cross-env NODE_ENV=development vite build --watch",
+    "build": "cross-env NODE_ENV=production vite build"
+  },
+  "cordova": {
+    "plugins": {
+      "monaca-plugin-monaca-core": {}
+    }
+  },
+  "devDependencies": {
+    "@vitejs/plugin-legacy": "^4.1.1",
+    "cross-env": "^7.0.3",
+    "@types/react": "^18.2.38",
+    "@types/react-dom": "^18.2.16",
+    "@vitejs/plugin-react": "^4.2.0",
+    "postcss-preset-env": "^9.3.0",
+    "vite": "^4.5.0",
+    "yargs": "^17.7.2"
+  }
+}
