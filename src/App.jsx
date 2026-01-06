@@ -19,12 +19,13 @@ const MATERIALS = [
   { id: 4, name: 'Sウォーク', img: 'https://placehold.jp/24/0044cc/ffffff/150x100.png?text=Sウォーク' },
 ];
 
+// 最新のURLに差し替え済み
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwtKAnFO_RSi1Ft6FemJSr2OvmljPkTfWJT0fvaBaInC1__miN--3ELHn2xe4xDP3Q/exec";
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [inputPass, setInputPass] = useState('');
-  const [authToken, setAuthToken] = useState(''); // パスワードをメモリ内に保持（リロードで消える）
+  const [authToken, setAuthToken] = useState('');
   const [cart, setCart] = useState([]); 
   const [history, setHistory] = useState({});
   const [loading, setLoading] = useState(false);
@@ -34,44 +35,50 @@ function App() {
   const [calcDisplay, setCalcDisplay] = useState(''); 
   const [editingIndex, setEditingIndex] = useState(null);
 
-  // --- 1. ログイン認証処理 ---
- const handleLogin = async () => {
-  if (inputPass.length === 0) {
-    alert("パスワードを入力してください");
-    return;
-  }
-
-  setLoading(true);
-  try {
-    // キャッシュを無視する設定(cache: 'no-cache')を追加
-    const response = await fetch(`${GAS_URL}?auth=${inputPass}`, {
-      method: 'GET',
-      cache: 'no-cache',
-    });
-    const data = await response.json();
-
-    if (data.result === "error") {
-      alert("パスワードが正しくありません。");
-      setInputPass('');
-    } else {
-      setAuthToken(inputPass);
-      setIsLoggedIn(true);
-      processHistoryData(data);
+  // --- 1. ログイン認証処理（GitHubキャッシュ対策版） ---
+  const handleLogin = async () => {
+    if (inputPass.length === 0) {
+      alert("パスワードを入力してください");
+      return;
     }
-  } catch (e) {
-    console.error("Fetch error details:", e); // エラーの詳細をコンソールに出す
-    alert("通信エラーが発生しました。");
-  } finally {
-    setLoading(false);
-  }
-};
 
-  // --- 2. 履歴取得・更新処理 ---
+    setLoading(true);
+    try {
+      // URLにランダムな数値を混ぜてキャッシュを強制回避
+      const cacheBuster = `&_cb=${Date.now()}`;
+      const response = await fetch(`${GAS_URL}?auth=${encodeURIComponent(inputPass)}${cacheBuster}`, {
+        method: 'GET',
+        redirect: 'follow', // GASのリダイレクトを追跡
+      });
+      
+      const data = await response.json();
+
+      if (data.result === "error") {
+        alert("パスワードが正しくありません。");
+        setInputPass('');
+      } else {
+        setAuthToken(inputPass);
+        setIsLoggedIn(true);
+        processHistoryData(data);
+      }
+    } catch (e) {
+      console.error("Login error:", e);
+      alert("通信エラー：GitHub Pagesからのリクエストが拒否されました。GASの公開設定を再確認してください。");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- 2. 履歴取得（キャッシュ対策版） ---
   const fetchHistory = async () => {
     if (!authToken) return;
     setLoading(true);
     try {
-      const response = await fetch(`${GAS_URL}?auth=${authToken}`);
+      const cacheBuster = `&_cb=${Date.now()}`;
+      const response = await fetch(`${GAS_URL}?auth=${encodeURIComponent(authToken)}${cacheBuster}`, {
+        method: 'GET',
+        redirect: 'follow'
+      });
       const data = await response.json();
       if (data.result === "error") {
         setIsLoggedIn(false);
@@ -85,8 +92,8 @@ function App() {
     }
   };
 
-  // データを日付ごとに集計する共通関数
   const processHistoryData = (data) => {
+    if (!Array.isArray(data)) return;
     const summary = data.reduce((acc, obj) => {
       const dateKey = obj.date.split(' ')[0];
       const itemKey = `${obj.name}-${obj.type}`;
@@ -105,7 +112,7 @@ function App() {
     try {
       await fetch(GAS_URL, {
         method: "POST",
-        mode: "no-cors",
+        mode: "no-cors", // POSTはno-corsで安定させる
         body: JSON.stringify({ 
           auth: authToken, 
           items: cart 
@@ -113,7 +120,7 @@ function App() {
       });
       alert("送信完了！");
       setCart([]);
-      fetchHistory(); // 送信後に履歴を更新
+      setTimeout(fetchHistory, 1000); // 反映待ちのため1秒後に履歴更新
     } catch (e) { 
       alert("送信エラーが発生しました"); 
     } finally {
@@ -121,7 +128,7 @@ function App() {
     }
   };
 
-  // --- 4. カート・計算機操作 ---
+  // --- 4. カート・計算機操作 (以下省略) ---
   const handleCalcBtn = (val) => {
     if (val === 'C') return setCalcDisplay('');
     if (val === '=') {
@@ -134,7 +141,6 @@ function App() {
   const addToCart = (type) => {
     const finalCount = parseInt(calcDisplay) || 0;
     if (finalCount === 0) return alert("数量を入力してください");
-    
     if (editingIndex !== null) {
       const newCart = [...cart];
       newCart[editingIndex] = { ...selectedItem, count: finalCount, type: type };
@@ -153,13 +159,11 @@ function App() {
   };
 
   const closeDialog = () => { setShowDialog(false); setSelectedItem(null); setCalcDisplay(''); setEditingIndex(null); };
-
   const getTypeColor = (type) => {
     const colors = { '通常': '#555', 'ケレン': '#FF9800', '修理': '#f44336', '完全': '#4CAF50' };
     return colors[type] || '#000';
   };
 
-  // --- ログイン画面 ---
   if (!isLoggedIn) {
     return (
       <Page renderToolbar={() => <Toolbar><div className="center">ログイン</div></Toolbar>}>
@@ -167,7 +171,7 @@ function App() {
         <div style={{ padding: '60px 20px', textAlign: 'center' }}>
           <Icon icon="md-lock" style={{ fontSize: '50px', color: '#00629d', marginBottom: '20px' }} />
           <h3>資材管理システム</h3>
-          <p style={{fontSize: '12px', color: '#666'}}>ブラウザを閉じるとログアウトされます</p>
+          <p style={{fontSize: '11px', color: '#888'}}>GitHub Pages 連携済み</p>
           <input
             type="password"
             placeholder="パスワードを入力"
@@ -183,7 +187,6 @@ function App() {
     );
   }
 
-  // --- メイン画面 ---
   return (
     <Page renderToolbar={() => (
       <Toolbar>
