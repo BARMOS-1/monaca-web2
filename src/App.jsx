@@ -20,7 +20,7 @@ const MATERIALS = [
 ];
 
 const MASTER_PASSWORD = "1234"; // GAS側と合わせる
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzfnQfTO8ANl-gxaboMnT9HBRGbWPfPj_bbIota51_gsGkjeLRuvPsJQnITxA0XvIS7/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyyW02JJjwpr7-u_MUb8gEHea9q85wNCRm6IBm6mgBD-vyZVUF8ZDNX4pXPqYUTyJxb/exec";
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
