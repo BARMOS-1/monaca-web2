@@ -19,7 +19,7 @@ const MATERIALS = [
   { id: 4, name: 'Sウォーク', img: 'https://placehold.jp/24/0044cc/ffffff/150x100.png?text=Sウォーク' },
 ];
 
-const GAS_URL = "https://script.google.com/macros/s/AKfycbyDljvi98mFIJTVoE5LN28MNz5wB04M_7sAOohJJoYAz9FuGYGFnp4n8eEbGNVJiFjMMw/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzOA1hoRQuWJybb5WyGXMjF8R2Mhkdn1yMoAm1yylg73WqqYyeeinUNO_SwhjGskr0QQg/exec";
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
