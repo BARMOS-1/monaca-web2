@@ -20,7 +20,7 @@ const MATERIALS = [
 ];
 
 // 最新のURLに差し替え済み
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwSf_dfoSRJdH5JSm1OsC30ESVKAqc9GPAEeXkjiEW93FUELBxanR5UV8WP2DZ1K6yy/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzz1FBKLKhr--GYEnOISPjeoizbzhXtNtVbU3LwwT62DfEghBFbn8UzhgALzFPzUGIxeQ/exec";
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
