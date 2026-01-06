@@ -20,7 +20,7 @@ const MATERIALS = [
 ];
 
 // 最新のURLに差し替え済み
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzz1FBKLKhr--GYEnOISPjeoizbzhXtNtVbU3LwwT62DfEghBFbn8UzhgALzFPzUGIxeQ/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbw_0GcIaLxbIRSIkCFoN-dWj7rZyYMNBH870i6nubtNWsABYy1R90jRssEofMRVNiRoyg/exec";
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -45,22 +45,24 @@ function App() {
     setLoading(true);
     try {
       // URLにランダムな数値を混ぜてキャッシュを強制回避
-      const cacheBuster = `&_cb=${Date.now()}`;
-      const response = await fetch(`${GAS_URL}?auth=${encodeURIComponent(inputPass)}${cacheBuster}`, {
-        method: 'GET',
-        redirect: 'follow', // GASのリダイレクトを追跡
-      });
-      
-      const data = await response.json();
+      const response = await fetch(GAS_URL, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ auth: inputPass })
+});
 
-      if (data.result === "error") {
-        alert("パスワードが正しくありません。");
-        setInputPass('');
-      } else {
-        setAuthToken(inputPass);
-        setIsLoggedIn(true);
-        processHistoryData(data);
-      }
+const data = await response.json();
+
+if (data.status !== "OK") {
+  alert("パスワードが正しくありません");
+  setInputPass('');
+  return;
+}
+
+setAuthToken(inputPass);
+setIsLoggedIn(true);
+fetchHistory(); // ログイン後に履歴取得
+
     } catch (e) {
       console.error("Login error:", e);
       alert("通信エラー：GitHub Pagesからのリクエストが拒否されました。GASの公開設定を再確認してください。");
@@ -71,26 +73,30 @@ function App() {
 
   // --- 2. 履歴取得（キャッシュ対策版） ---
   const fetchHistory = async () => {
-    if (!authToken) return;
-    setLoading(true);
-    try {
-      const cacheBuster = `&_cb=${Date.now()}`;
-      const response = await fetch(`${GAS_URL}?auth=${encodeURIComponent(authToken)}${cacheBuster}`, {
-        method: 'GET',
-        redirect: 'follow'
-      });
-      const data = await response.json();
-      if (data.result === "error") {
-        setIsLoggedIn(false);
-        return;
-      }
-      processHistoryData(data);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+  if (!authToken) return;
+  setLoading(true);
+
+  try {
+    const response = await fetch(GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ auth: authToken, mode: "history" })
+    });
+
+    const data = await response.json();
+
+    if (!Array.isArray(data)) {
+      setIsLoggedIn(false);
+      return;
     }
-  };
+
+    processHistoryData(data);
+  } catch (e) {
+    console.error(e);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const processHistoryData = (data) => {
     if (!Array.isArray(data)) return;
