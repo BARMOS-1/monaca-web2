@@ -75,12 +75,16 @@ function App() {
   const [calcDisplay, setCalcDisplay] = useState(''); 
   const [editingIndex, setEditingIndex] = useState(null);
 
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbwMzDzBvrEvb9SMqAh7NtCqI-iGsRL9cvmpl3drQuqQnIPSkZAnfoM4PR6-SbfIqN3C/exec";
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbzQnTADaS5pLCpOq6aX_UceX0octR_F_lUDj3jJeGSDZcmWLC2FSlDVrrFL_9h9emhT/exec";
 
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      const response = await fetch(GAS_URL);
+      // 保存されているパスワードを取得
+      const authData = JSON.parse(localStorage.getItem('scaffold_auth'));
+      const pass = authData ? authData.token : "";
+      // URLの末尾に ?auth=パスワード を追加してGETリクエスト
+      const response = await fetch(`${GAS_URL}?auth=${pass}`);
       const data = await response.json();
       const summary = data.reduce((acc, obj) => {
         const dateKey = obj.date.split(' ')[0];
@@ -108,7 +112,10 @@ function App() {
       await fetch(GAS_URL, {
         method: "POST",
         mode: "no-cors",
-        body: JSON.stringify({ items: cart })
+        body: JSON.stringify({ 
+          auth: authData?.token, // これを追加
+          items: cart 
+        })
       });
       alert("全件送信完了しました！");
       setCart([]);
