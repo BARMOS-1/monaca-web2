@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Page, Toolbar, Card, Button, List, ListItem, Icon, Tabbar, Tab, Dialog, ProgressCircular, ListHeader } from 'react-onsenui';
 import 'onsenui/css/onsenui.css';
 import 'onsenui/css/onsen-css-components.css';
@@ -19,12 +19,12 @@ const MATERIALS = [
   { id: 4, name: 'Sウォーク', img: 'https://placehold.jp/24/0044cc/ffffff/150x100.png?text=Sウォーク' },
 ];
 
-const MASTER_PASSWORD = "1234"; // GAS側と合わせる
-const GAS_URL = "https://script.google.com/macros/s/AKfycbyyW02JJjwpr7-u_MUb8gEHea9q85wNCRm6IBm6mgBD-vyZVUF8ZDNX4pXPqYUTyJxb/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyDH006SPbCWQykUMhlbLVhAc1OFAJ7U3-BSEnsfHyartPMPusw2H1hQyqO1go6pQU0/exec";
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [inputPass, setInputPass] = useState('');
+  const [authToken, setAuthToken] = useState(''); // パスワードをメモリ内に保持（リロードで消える）
   const [cart, setCart] = useState([]); 
   const [history, setHistory] = useState({});
   const [loading, setLoading] = useState(false);
@@ -34,88 +34,85 @@ function App() {
   const [calcDisplay, setCalcDisplay] = useState(''); 
   const [editingIndex, setEditingIndex] = useState(null);
 
-  // 1. 起動時のチェック：保存されているトークン（パスワード）があればログイン状態にする
-  useEffect(() => {
-    const authData = JSON.parse(localStorage.getItem('scaffold_auth'));
-    if (authData) {
-      const now = new Date().getTime();
-      if (now - authData.loginTime < 3 * 24 * 60 * 60 * 1000) {
-        setIsLoggedIn(true);
-        fetchHistory(); // 履歴を読み込みにいく（ここでパスワードが違えば弾かれる）
-      } else {
-        localStorage.removeItem('scaffold_auth');
-      }
-    }
-  }, []);
-
-  // 2. ログイン処理：パスワードの検証はここではせず、保存して画面を切り替えるだけにする
-  const handleLogin = () => {
-    if (inputPass.length > 0) {
-      const authInfo = { 
-        loginTime: new Date().getTime(), 
-        token: inputPass // 入力された値をトークンとして保存
-      };
-      localStorage.setItem('scaffold_auth', JSON.stringify(authInfo));
-      setIsLoggedIn(true);
-      fetchHistory(); // ログイン直後に履歴取得を実行してパスワード検証
-    } else {
+  // --- 1. ログイン認証処理 ---
+  const handleLogin = async () => {
+    if (inputPass.length === 0) {
       alert("パスワードを入力してください");
+      return;
     }
-  };
 
-  // 3. 履歴取得：ここでGASにパスワードを送り、エラーならログイン画面に戻す
-  const fetchHistory = async () => {
     setLoading(true);
     try {
-      const authData = JSON.parse(localStorage.getItem('scaffold_auth'));
-      const pass = authData ? authData.token : "";
-      
-      const response = await fetch(`${GAS_URL}?auth=${pass}`);
+      // ログイン時にGASへ通信し、パスワードの正否を確認
+      const response = await fetch(`${GAS_URL}?auth=${inputPass}`);
       const data = await response.json();
 
-      // GAS側で認証エラーを返してきた場合
       if (data.result === "error") {
-        alert("認証に失敗しました。正しいパスワードを入力してください。");
-        localStorage.removeItem('scaffold_auth');
-        setIsLoggedIn(false); // ログイン画面へ強制送還
-        return;
+        alert("パスワードが正しくありません。");
+        setInputPass('');
+      } else {
+        // 成功時のみ画面を切り替え、パスワードを状態保持
+        setAuthToken(inputPass);
+        setIsLoggedIn(true);
+        // ついでに取得した履歴データをセット
+        processHistoryData(data);
       }
-
-      // 正常な場合の集計処理
-      const summary = data.reduce((acc, obj) => {
-        const dateKey = obj.date.split(' ')[0];
-        const itemKey = `${obj.name}-${obj.type}`;
-        if (!acc[dateKey]) acc[dateKey] = {};
-        if (!acc[dateKey][itemKey]) acc[dateKey][itemKey] = { ...obj };
-        else acc[dateKey][itemKey].count = Number(acc[dateKey][itemKey].count) + Number(obj.count);
-        return acc;
-      }, {});
-      setHistory(summary);
     } catch (e) {
       console.error(e);
-      // 通信エラーなどの場合（GAS側のデプロイミスなど）
+      alert("通信エラー：GASのURLが正しいか、公開設定が『全員(全員)』になっているか確認してください。");
     } finally {
       setLoading(false);
     }
   };
 
-  // 4. 送信処理：ここでも保存されているトークン（パスワード）を同封する
+  // --- 2. 履歴取得・更新処理 ---
+  const fetchHistory = async () => {
+    if (!authToken) return;
+    setLoading(true);
+    try {
+      const response = await fetch(`${GAS_URL}?auth=${authToken}`);
+      const data = await response.json();
+      if (data.result === "error") {
+        setIsLoggedIn(false);
+        return;
+      }
+      processHistoryData(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // データを日付ごとに集計する共通関数
+  const processHistoryData = (data) => {
+    const summary = data.reduce((acc, obj) => {
+      const dateKey = obj.date.split(' ')[0];
+      const itemKey = `${obj.name}-${obj.type}`;
+      if (!acc[dateKey]) acc[dateKey] = {};
+      if (!acc[dateKey][itemKey]) acc[dateKey][itemKey] = { ...obj };
+      else acc[dateKey][itemKey].count = Number(acc[dateKey][itemKey].count) + Number(obj.count);
+      return acc;
+    }, {});
+    setHistory(summary);
+  };
+
+  // --- 3. 送信処理 ---
   const sendOrder = async () => {
     if (cart.length === 0 || isSending) return;
     setIsSending(true);
-    const authData = JSON.parse(localStorage.getItem('scaffold_auth'));
     try {
       await fetch(GAS_URL, {
         method: "POST",
         mode: "no-cors",
         body: JSON.stringify({ 
-          auth: authData?.token, // 保存されているパスワードを送信
+          auth: authToken, 
           items: cart 
         })
       });
       alert("送信完了！");
       setCart([]);
-      fetchHistory();
+      fetchHistory(); // 送信後に履歴を更新
     } catch (e) { 
       alert("送信エラーが発生しました"); 
     } finally {
@@ -123,24 +120,7 @@ function App() {
     }
   };
 
-  // ... (以下、UIや電卓の処理などはそのまま)
-
-  const sendOrder = async () => {
-    if (cart.length === 0 || isSending) return;
-    setIsSending(true);
-    const authData = JSON.parse(localStorage.getItem('scaffold_auth'));
-    try {
-      await fetch(GAS_URL, {
-        method: "POST",
-        mode: "no-cors",
-        body: JSON.stringify({ auth: authData?.token, items: cart })
-      });
-      alert("送信完了！");
-      setCart([]);
-      fetchHistory();
-    } catch (e) { alert("送信エラー"); } finally { setIsSending(false); }
-  };
-
+  // --- 4. カート・計算機操作 ---
   const handleCalcBtn = (val) => {
     if (val === 'C') return setCalcDisplay('');
     if (val === '=') {
@@ -152,6 +132,8 @@ function App() {
 
   const addToCart = (type) => {
     const finalCount = parseInt(calcDisplay) || 0;
+    if (finalCount === 0) return alert("数量を入力してください");
+    
     if (editingIndex !== null) {
       const newCart = [...cart];
       newCart[editingIndex] = { ...selectedItem, count: finalCount, type: type };
@@ -162,6 +144,13 @@ function App() {
     closeDialog();
   };
 
+  const deleteItem = () => {
+    const newCart = [...cart];
+    newCart.splice(editingIndex, 1);
+    setCart(newCart);
+    closeDialog();
+  };
+
   const closeDialog = () => { setShowDialog(false); setSelectedItem(null); setCalcDisplay(''); setEditingIndex(null); };
 
   const getTypeColor = (type) => {
@@ -169,7 +158,7 @@ function App() {
     return colors[type] || '#000';
   };
 
-  // ログインしていない場合の画面
+  // --- ログイン画面 ---
   if (!isLoggedIn) {
     return (
       <Page renderToolbar={() => <Toolbar><div className="center">ログイン</div></Toolbar>}>
@@ -177,27 +166,30 @@ function App() {
         <div style={{ padding: '60px 20px', textAlign: 'center' }}>
           <Icon icon="md-lock" style={{ fontSize: '50px', color: '#00629d', marginBottom: '20px' }} />
           <h3>資材管理システム</h3>
+          <p style={{fontSize: '12px', color: '#666'}}>ブラウザを閉じるとログアウトされます</p>
           <input
             type="password"
-            placeholder="パスワード"
+            placeholder="パスワードを入力"
             value={inputPass}
             onChange={(e) => setInputPass(e.target.value)}
             style={{ width: '100%', padding: '15px', fontSize: '20px', marginBottom: '15px', textAlign: 'center', border:'1px solid #ccc', borderRadius:'8px' }}
           />
-          <Button modifier="large" onClick={handleLogin}>ログイン</Button>
+          <Button modifier="large" onClick={handleLogin} disabled={loading}>
+            {loading ? <ProgressCircular indeterminate /> : "ログイン"}
+          </Button>
         </div>
       </Page>
     );
   }
 
-  // ログイン済みのメイン画面
+  // --- メイン画面 ---
   return (
     <Page renderToolbar={() => (
       <Toolbar>
         <div className="center">資材管理</div>
         <div className="right">
-          <Button modifier="quiet" onClick={() => { localStorage.removeItem('scaffold_auth'); setIsLoggedIn(false); }}>
-            <Icon icon="md-sign-in" style={{color:'white'}} />
+          <Button modifier="quiet" onClick={() => { setIsLoggedIn(false); setAuthToken(''); setInputPass(''); }}>
+            <Icon icon="md-sign-out" style={{color:'white'}} />
           </Button>
         </div>
       </Toolbar>
@@ -212,7 +204,7 @@ function App() {
                 <div className="material-grid">
                   {MATERIALS.map(item => (
                     <Card key={item.id} className="item-card" onClick={() => { setSelectedItem(item); setShowDialog(true); }}>
-                      <img src={item.img} style={{ width: '100%', borderRadius: '8px', aspectRatio: '3/2', objectFit: 'cover' }} />
+                      <img src={item.img} alt={item.name} style={{ width: '100%', borderRadius: '8px', aspectRatio: '3/2', objectFit: 'cover' }} />
                       <div style={{ fontWeight: 'bold', padding: '10px' }}>{item.name}</div>
                     </Card>
                   ))}
@@ -251,6 +243,7 @@ function App() {
                   <Button onClick={fetchHistory} modifier="outline" disabled={loading}><Icon icon="md-refresh" /> 更新</Button>
                 </div>
                 {loading ? <div style={{ textAlign: 'center' }}><ProgressCircular indeterminate /></div> : (
+                  Object.keys(history).length === 0 ? <div style={{textAlign:'center', color:'#999'}}>履歴はありません</div> :
                   Object.keys(history).map(date => (
                     <div key={date}>
                       <ListHeader style={{backgroundColor: '#00629d', color: 'white'}}>{date}</ListHeader>
@@ -270,6 +263,7 @@ function App() {
           ), tab: <Tab label="履歴" icon="md-time-restore" /> }
         ]}
       />
+      
       <Dialog isOpen={showDialog} onCancel={closeDialog} cancelable>
         <div style={{ padding: '15px', textAlign: 'center', backgroundColor: '#fff' }}>
           <h3>{selectedItem?.name}</h3>
