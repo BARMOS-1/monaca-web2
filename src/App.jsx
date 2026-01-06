@@ -19,7 +19,7 @@ const MATERIALS = [
   { id: 4, name: 'Sウォーク', img: 'https://placehold.jp/24/0044cc/ffffff/150x100.png?text=Sウォーク' },
 ];
 
-const GAS_URL = "https://script.google.com/macros/s/AKfycbyDH006SPbCWQykUMhlbLVhAc1OFAJ7U3-BSEnsfHyartPMPusw2H1hQyqO1go6pQU0/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwtKAnFO_RSi1Ft6FemJSr2OvmljPkTfWJT0fvaBaInC1__miN--3ELHn2xe4xDP3Q/exec";
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -35,35 +35,36 @@ function App() {
   const [editingIndex, setEditingIndex] = useState(null);
 
   // --- 1. ログイン認証処理 ---
-  const handleLogin = async () => {
-    if (inputPass.length === 0) {
-      alert("パスワードを入力してください");
-      return;
-    }
+ const handleLogin = async () => {
+  if (inputPass.length === 0) {
+    alert("パスワードを入力してください");
+    return;
+  }
 
-    setLoading(true);
-    try {
-      // ログイン時にGASへ通信し、パスワードの正否を確認
-      const response = await fetch(`${GAS_URL}?auth=${inputPass}`);
-      const data = await response.json();
+  setLoading(true);
+  try {
+    // キャッシュを無視する設定(cache: 'no-cache')を追加
+    const response = await fetch(`${GAS_URL}?auth=${inputPass}`, {
+      method: 'GET',
+      cache: 'no-cache',
+    });
+    const data = await response.json();
 
-      if (data.result === "error") {
-        alert("パスワードが正しくありません。");
-        setInputPass('');
-      } else {
-        // 成功時のみ画面を切り替え、パスワードを状態保持
-        setAuthToken(inputPass);
-        setIsLoggedIn(true);
-        // ついでに取得した履歴データをセット
-        processHistoryData(data);
-      }
-    } catch (e) {
-      console.error(e);
-      alert("通信エラー：GASのURLが正しいか、公開設定が『全員(全員)』になっているか確認してください。");
-    } finally {
-      setLoading(false);
+    if (data.result === "error") {
+      alert("パスワードが正しくありません。");
+      setInputPass('');
+    } else {
+      setAuthToken(inputPass);
+      setIsLoggedIn(true);
+      processHistoryData(data);
     }
-  };
+  } catch (e) {
+    console.error("Fetch error details:", e); // エラーの詳細をコンソールに出す
+    alert("通信エラーが発生しました。");
+  } finally {
+    setLoading(false);
+  }
+};
 
   // --- 2. 履歴取得・更新処理 ---
   const fetchHistory = async () => {
