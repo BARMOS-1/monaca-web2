@@ -20,7 +20,7 @@ const MATERIALS = [
 ];
 
 const MASTER_PASSWORD = "1234"; // GAS側と合わせる
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzQnTADaS5pLCpOq6aX_UceX0octR_F_lUDj3jJeGSDZcmWLC2FSlDVrrFL_9h9emhT/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbxkw9DSpqy0hwubifBQnnS7UW2fd_-RU3lkqHyDDbMu0v7Ir4AoE0Bv6lhWpusHewOq/exec";
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -34,37 +34,54 @@ function App() {
   const [calcDisplay, setCalcDisplay] = useState(''); 
   const [editingIndex, setEditingIndex] = useState(null);
 
-  // 起動時にログイン状態をチェック（3日間有効）
+  // 1. 起動時のチェック：保存されているトークン（パスワード）があればログイン状態にする
   useEffect(() => {
     const authData = JSON.parse(localStorage.getItem('scaffold_auth'));
     if (authData) {
       const now = new Date().getTime();
       if (now - authData.loginTime < 3 * 24 * 60 * 60 * 1000) {
         setIsLoggedIn(true);
+        fetchHistory(); // 履歴を読み込みにいく（ここでパスワードが違えば弾かれる）
       } else {
         localStorage.removeItem('scaffold_auth');
       }
     }
   }, []);
 
+  // 2. ログイン処理：パスワードの検証はここではせず、保存して画面を切り替えるだけにする
   const handleLogin = () => {
-    if (inputPass === MASTER_PASSWORD) {
-      const authInfo = { loginTime: new Date().getTime(), token: inputPass };
+    if (inputPass.length > 0) {
+      const authInfo = { 
+        loginTime: new Date().getTime(), 
+        token: inputPass // 入力された値をトークンとして保存
+      };
       localStorage.setItem('scaffold_auth', JSON.stringify(authInfo));
       setIsLoggedIn(true);
+      fetchHistory(); // ログイン直後に履歴取得を実行してパスワード検証
     } else {
-      alert("パスワードが違います");
-      setInputPass('');
+      alert("パスワードを入力してください");
     }
   };
 
+  // 3. 履歴取得：ここでGASにパスワードを送り、エラーならログイン画面に戻す
   const fetchHistory = async () => {
     setLoading(true);
     try {
       const authData = JSON.parse(localStorage.getItem('scaffold_auth'));
       const pass = authData ? authData.token : "";
+      
       const response = await fetch(`${GAS_URL}?auth=${pass}`);
       const data = await response.json();
+
+      // GAS側で認証エラーを返してきた場合
+      if (data.result === "error") {
+        alert("認証に失敗しました。正しいパスワードを入力してください。");
+        localStorage.removeItem('scaffold_auth');
+        setIsLoggedIn(false); // ログイン画面へ強制送還
+        return;
+      }
+
+      // 正常な場合の集計処理
       const summary = data.reduce((acc, obj) => {
         const dateKey = obj.date.split(' ')[0];
         const itemKey = `${obj.name}-${obj.type}`;
@@ -74,8 +91,39 @@ function App() {
         return acc;
       }, {});
       setHistory(summary);
-    } catch (e) { alert("履歴取得失敗"); } finally { setLoading(false); }
+    } catch (e) {
+      console.error(e);
+      // 通信エラーなどの場合（GAS側のデプロイミスなど）
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // 4. 送信処理：ここでも保存されているトークン（パスワード）を同封する
+  const sendOrder = async () => {
+    if (cart.length === 0 || isSending) return;
+    setIsSending(true);
+    const authData = JSON.parse(localStorage.getItem('scaffold_auth'));
+    try {
+      await fetch(GAS_URL, {
+        method: "POST",
+        mode: "no-cors",
+        body: JSON.stringify({ 
+          auth: authData?.token, // 保存されているパスワードを送信
+          items: cart 
+        })
+      });
+      alert("送信完了！");
+      setCart([]);
+      fetchHistory();
+    } catch (e) { 
+      alert("送信エラーが発生しました"); 
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // ... (以下、UIや電卓の処理などはそのまま)
 
   const sendOrder = async () => {
     if (cart.length === 0 || isSending) return;
