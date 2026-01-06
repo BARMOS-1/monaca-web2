@@ -19,8 +19,7 @@ const MATERIALS = [
   { id: 4, name: 'Sウォーク', img: 'https://placehold.jp/24/0044cc/ffffff/150x100.png?text=Sウォーク' },
 ];
 
-// 最新のURLに差し替え済み
-const GAS_URL = "https://script.google.com/macros/s/AKfycbw_0GcIaLxbIRSIkCFoN-dWj7rZyYMNBH870i6nubtNWsABYy1R90jRssEofMRVNiRoyg/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyf8Nt9n2qk835E4Z_08NBSll5VQJ_zXN6chcvK2A6_B44R2l6IY8FxoktIyaZjBls/exec";
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -35,72 +34,55 @@ function App() {
   const [calcDisplay, setCalcDisplay] = useState(''); 
   const [editingIndex, setEditingIndex] = useState(null);
 
-  // --- 1. ログイン認証処理（GitHubキャッシュ対策版） ---
-  const handleLogin = async () => {
-    if (inputPass.length === 0) {
-      alert("パスワードを入力してください");
-      return;
-    }
-
+  // --- 1. ログイン認証処理 (JSONP方式) ---
+  const handleLogin = () => {
+    if (!inputPass) { alert("パスワードを入力してください"); return; }
     setLoading(true);
-    try {
-      // URLにランダムな数値を混ぜてキャッシュを強制回避
-      const response = await fetch(GAS_URL, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ auth: inputPass })
-});
-
-const data = await response.json();
-
-if (data.status !== "OK") {
-  alert("パスワードが正しくありません");
-  setInputPass('');
-  return;
-}
-
-setAuthToken(inputPass);
-setIsLoggedIn(true);
-fetchHistory(); // ログイン後に履歴取得
-
-    } catch (e) {
-      console.error("Login error:", e);
-      alert("通信エラー：GitHub Pagesからのリクエストが拒否されました。GASの公開設定を再確認してください。");
-    } finally {
+    const callbackName = "login_cb_" + Date.now();
+    window[callbackName] = (data) => {
       setLoading(false);
-    }
+      if (data.result === "success") {
+        setAuthToken(inputPass);
+        setIsLoggedIn(true);
+        fetchHistory(inputPass); // ログイン成功時に履歴取得
+      } else {
+        alert("パスワードが正しくありません");
+        setInputPass("");
+      }
+      delete window[callbackName];
+      const scriptTag = document.getElementById(callbackName);
+      if (scriptTag) document.body.removeChild(scriptTag);
+    };
+    const script = document.createElement("script");
+    script.id = callbackName;
+    script.src = `${GAS_URL}?auth=${encodeURIComponent(inputPass)}&callback=${callbackName}&_=${Date.now()}`;
+    script.onerror = () => { setLoading(false); alert("通信エラー"); };
+    document.body.appendChild(script);
   };
 
-  // --- 2. 履歴取得（キャッシュ対策版） ---
-  const fetchHistory = async () => {
-  if (!authToken) return;
-  setLoading(true);
-
-  try {
-    const response = await fetch(GAS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ auth: authToken, mode: "history" })
-    });
-
-    const data = await response.json();
-
-    if (!Array.isArray(data)) {
-      setIsLoggedIn(false);
-      return;
-    }
-
-    processHistoryData(data);
-  } catch (e) {
-    console.error(e);
-  } finally {
-    setLoading(false);
-  }
-};
+  // --- 2. 履歴取得 (GitHub Pages対策でJSONP方式に変更) ---
+  const fetchHistory = (token = authToken) => {
+    if (!token) return;
+    setLoading(true);
+    const callbackName = "hist_cb_" + Date.now();
+    window[callbackName] = (data) => {
+      setLoading(false);
+      if (Array.isArray(data)) {
+        processHistoryData(data);
+      }
+      delete window[callbackName];
+      const scriptTag = document.getElementById(callbackName);
+      if (scriptTag) document.body.removeChild(scriptTag);
+    };
+    const script = document.createElement("script");
+    script.id = callbackName;
+    script.src = `${GAS_URL}?auth=${encodeURIComponent(token)}&mode=history&callback=${callbackName}&_=${Date.now()}`;
+    document.body.appendChild(script);
+  };
 
   const processHistoryData = (data) => {
-    if (!Array.isArray(data)) return;
     const summary = data.reduce((acc, obj) => {
+      if (!obj.date) return acc;
       const dateKey = obj.date.split(' ')[0];
       const itemKey = `${obj.name}-${obj.type}`;
       if (!acc[dateKey]) acc[dateKey] = {};
@@ -118,27 +100,27 @@ fetchHistory(); // ログイン後に履歴取得
     try {
       await fetch(GAS_URL, {
         method: "POST",
-        mode: "no-cors", // POSTはno-corsで安定させる
-        body: JSON.stringify({ 
-          auth: authToken, 
-          items: cart 
-        })
+        mode: "no-cors", 
+        body: JSON.stringify({ auth: authToken, items: cart })
       });
-      alert("送信完了！");
+      alert("送信完了！(反映まで数秒かかります)");
       setCart([]);
-      setTimeout(fetchHistory, 1000); // 反映待ちのため1秒後に履歴更新
+      setTimeout(() => fetchHistory(authToken), 2000); 
     } catch (e) { 
-      alert("送信エラーが発生しました"); 
+      alert("送信エラー"); 
     } finally {
       setIsSending(false);
     }
   };
 
-  // --- 4. カート・計算機操作 (以下省略) ---
+  // --- 4. 操作系 ---
   const handleCalcBtn = (val) => {
     if (val === 'C') return setCalcDisplay('');
     if (val === '=') {
-      try { setCalcDisplay(Function(`return ${calcDisplay}`)().toString()); } catch (e) { setCalcDisplay('Error'); }
+      try { 
+        if (!calcDisplay) return;
+        setCalcDisplay(new Function(`return ${calcDisplay}`)().toString()); 
+      } catch (e) { setCalcDisplay('Error'); }
       return;
     }
     setCalcDisplay(prev => prev + val);
@@ -165,6 +147,7 @@ fetchHistory(); // ログイン後に履歴取得
   };
 
   const closeDialog = () => { setShowDialog(false); setSelectedItem(null); setCalcDisplay(''); setEditingIndex(null); };
+  
   const getTypeColor = (type) => {
     const colors = { '通常': '#555', 'ケレン': '#FF9800', '修理': '#f44336', '完全': '#4CAF50' };
     return colors[type] || '#000';
@@ -177,10 +160,10 @@ fetchHistory(); // ログイン後に履歴取得
         <div style={{ padding: '60px 20px', textAlign: 'center' }}>
           <Icon icon="md-lock" style={{ fontSize: '50px', color: '#00629d', marginBottom: '20px' }} />
           <h3>資材管理システム</h3>
-          <p style={{fontSize: '11px', color: '#888'}}>GitHub Pages 連携済み</p>
+          <p style={{fontSize: '11px', color: '#888'}}>GitHub Pages 連携中</p>
           <input
             type="password"
-            placeholder="パスワードを入力"
+            placeholder="パスワード"
             value={inputPass}
             onChange={(e) => setInputPass(e.target.value)}
             style={{ width: '100%', padding: '15px', fontSize: '20px', marginBottom: '15px', textAlign: 'center', border:'1px solid #ccc', borderRadius:'8px' }}
@@ -250,7 +233,7 @@ fetchHistory(); // ログイン後に履歴取得
             <Page>
               <div className="page-container" style={{ maxWidth: '800px' }}>
                 <div style={{ textAlign: 'center', padding: '15px' }}>
-                  <Button onClick={fetchHistory} modifier="outline" disabled={loading}><Icon icon="md-refresh" /> 更新</Button>
+                  <Button onClick={() => fetchHistory()} modifier="outline" disabled={loading}><Icon icon="md-refresh" /> 更新</Button>
                 </div>
                 {loading ? <div style={{ textAlign: 'center' }}><ProgressCircular indeterminate /></div> : (
                   Object.keys(history).length === 0 ? <div style={{textAlign:'center', color:'#999'}}>履歴はありません</div> :
@@ -284,7 +267,7 @@ fetchHistory(); // ログイン後に履歴取得
             ))}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '15px' }}>
-            {['通常', 'ケレン', '修理', '完全'].map(t => <Button key={t} onClick={() => addToCart(t)} style={{ backgroundColor: getTypeColor(t) }}>{t}保存</Button>)}
+            {['通常', 'ケレン', '修理', '完全'].map(t => <Button key={t} onClick={() => addToCart(t)} style={{ backgroundColor: getTypeColor(t), color:'white' }}>{t}保存</Button>)}
           </div>
           {editingIndex !== null && <Button modifier="quiet" onClick={deleteItem} style={{ color: '#f44336', marginTop: '10px' }}>削除</Button>}
         </div>
