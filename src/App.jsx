@@ -19,7 +19,6 @@ const MATERIALS = [
   { id: 4, name: 'Sウォーク', img: 'https://placehold.jp/24/0044cc/ffffff/150x100.png?text=Sウォーク' },
 ];
 
-// App.js
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzKVWHXiTdqR30nQQy3V17A6KtzLYjFZj75G_jtliZqvSiOCkh5bk_h2A9rCPX-1ZWsvg/exec";
 
 function App() {
@@ -35,46 +34,35 @@ function App() {
   const [calcDisplay, setCalcDisplay] = useState(''); 
   const [editingIndex, setEditingIndex] = useState(null);
 
-
-// --- 1. ログイン認証処理 (POST方式への切り替え) ---
+  // --- 1. ログイン/履歴取得共通処理 (POST方式) ---
   const handleLogin = async () => {
     if (!inputPass) { alert("パスワードを入力してください"); return; }
     setLoading(true);
-
     try {
-      // JSONP(Scriptタグ)ではなく、fetch(POST)を使います
       const response = await fetch(GAS_URL, {
         method: "POST",
         mode: "cors", 
         headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify({ 
-          auth: inputPass, 
-          mode: "login" 
-        })
+        body: JSON.stringify({ auth: inputPass, mode: "login" })
       });
-
       const data = await response.json();
-
       if (data.result === "success") {
         setAuthToken(inputPass);
         setIsLoggedIn(true);
-        // ログイン成功後、履歴取得もPOSTで行うように変更します
         fetchHistoryByPost(inputPass);
       } else {
-        alert("認証エラー: パスワードが正しくありません");
+        alert("認証エラー");
         setInputPass("");
       }
     } catch (e) {
-      console.error(e);
-      alert("通信エラーが発生しました。GASのURLが正しいか、公開設定が『全員』になっているか確認してください。");
+      alert("通信エラー");
     } finally {
       setLoading(false);
     }
   };
 
-  // --- 履歴取得もPOST方式に修正 ---
   const fetchHistoryByPost = async (token = authToken) => {
-    if (!token) return;
+    if (!token || loading) return;
     setLoading(true);
     try {
       const response = await fetch(GAS_URL, {
@@ -88,30 +76,10 @@ function App() {
         processHistoryData(data);
       }
     } catch (e) {
-      console.error("履歴取得エラー:", e);
+      console.error("履歴取得エラー", e);
     } finally {
       setLoading(false);
     }
-  };
-
-  // --- 2. 履歴取得 (GitHub Pages対策でJSONP方式に変更) ---
-  const fetchHistory = (token = authToken) => {
-    if (!token) return;
-    setLoading(true);
-    const callbackName = "hist_cb_" + Date.now();
-    window[callbackName] = (data) => {
-      setLoading(false);
-      if (Array.isArray(data)) {
-        processHistoryData(data);
-      }
-      delete window[callbackName];
-      const scriptTag = document.getElementById(callbackName);
-      if (scriptTag) document.body.removeChild(scriptTag);
-    };
-    const script = document.createElement("script");
-    script.id = callbackName;
-    script.src = `${GAS_URL}?auth=${encodeURIComponent(token)}&mode=history&callback=${callbackName}&_=${Date.now()}`;
-    document.body.appendChild(script);
   };
 
   const processHistoryData = (data) => {
@@ -131,17 +99,33 @@ function App() {
   const sendOrder = async () => {
     if (cart.length === 0 || isSending) return;
     setIsSending(true);
+    
     try {
+      // GASに送るデータから不要なもの(imgなど)を除外し、順番を整理する
+      const cleanItems = cart.map(item => ({
+        name: item.name,
+        count: Number(item.count), // 確実に数値にする
+        type: item.type
+      }));
+
       await fetch(GAS_URL, {
         method: "POST",
         mode: "no-cors", 
-        body: JSON.stringify({ auth: authToken, items: cart })
+        // cartではなく、整理した cleanItems を送る
+        body: JSON.stringify({ 
+          auth: authToken, 
+          items: cleanItems 
+        })
       });
-      alert("送信完了！(反映まで数秒かかります)");
+
+      alert("送信完了！");
       setCart([]);
-      setTimeout(() => fetchHistory(authToken), 2000); 
+      
+      // 反映待ち後に履歴を更新（反映をより確実にするため3秒に延ばすのがおすすめ）
+      setTimeout(() => fetchHistoryByPost(authToken), 3000); 
     } catch (e) { 
-      alert("送信エラー"); 
+      console.error(e);
+      alert("送信エラーが発生しました"); 
     } finally {
       setIsSending(false);
     }
@@ -245,7 +229,7 @@ function App() {
                 <ListHeader>送信待ちリスト</ListHeader>
                 <List>
                   {cart.map((c, i) => (
-                    <ListItem key={i} onClick={() => { setSelectedItem(c); setEditingIndex(i); setCalcDisplay(c.count.toString()); setShowDialog(true); }} tappable>
+                    <ListItem key={`cart-${i}`} onClick={() => { setSelectedItem(c); setEditingIndex(i); setCalcDisplay(c.count.toString()); setShowDialog(true); }} tappable>
                       <div className="center">
                         <span style={{ fontWeight: 'bold' }}>{c.name}</span>
                         <span style={{ marginLeft: '10px', fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', backgroundColor: getTypeColor(c.type), color: 'white' }}>{c.type}</span>
@@ -267,16 +251,17 @@ function App() {
             <Page>
               <div className="page-container" style={{ maxWidth: '800px' }}>
                 <div style={{ textAlign: 'center', padding: '15px' }}>
-                  <Button onClick={() => fetchHistory()} modifier="outline" disabled={loading}><Icon icon="md-refresh" /> 更新</Button>
+                  <Button onClick={() => fetchHistoryByPost()} modifier="outline" disabled={loading}>
+                    {loading ? <ProgressCircular indeterminate /> : <><Icon icon="md-refresh" /> 更新</>}
+                  </Button>
                 </div>
-                {loading ? <div style={{ textAlign: 'center' }}><ProgressCircular indeterminate /></div> : (
-                  Object.keys(history).length === 0 ? <div style={{textAlign:'center', color:'#999'}}>履歴はありません</div> :
+                {!loading && Object.keys(history).length === 0 ? <div style={{textAlign:'center', color:'#999'}}>履歴はありません</div> :
                   Object.keys(history).map(date => (
-                    <div key={date}>
+                    <div key={`group-${date}`}>
                       <ListHeader style={{backgroundColor: '#00629d', color: 'white'}}>{date}</ListHeader>
                       <List>
                         {Object.values(history[date]).map((h, i) => (
-                          <ListItem key={i}>
+                          <ListItem key={`hist-${date}-${h.name}-${h.type}-${i}`}>
                             <div className="center"><b>{h.name}</b> <small style={{backgroundColor: getTypeColor(h.type), color:'white', padding:'2px 5px', borderRadius:'5px', marginLeft:'5px'}}>{h.type}</small></div>
                             <div className="right"><b>{h.count}</b></div>
                           </ListItem>
@@ -284,7 +269,7 @@ function App() {
                       </List>
                     </div>
                   ))
-                )}
+                }
               </div>
             </Page>
           ), tab: <Tab label="履歴" icon="md-time-restore" /> }
@@ -297,11 +282,11 @@ function App() {
           <div style={{ backgroundColor: '#f0f0f0', padding: '10px', fontSize: '32px', textAlign: 'right', borderRadius: '5px', marginBottom: '10px' }}>{calcDisplay || '0'}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '5px' }}>
             {['7','8','9','+','4','5','6','-','1','2','3','*','C','0','=','/'].map(btn => (
-              <Button key={btn} onClick={() => handleCalcBtn(btn)} style={{ padding: '15px 0', backgroundColor: btn === 'C' ? '#f44336' : (btn === '=' ? '#4CAF50' : '#666') }}>{btn}</Button>
+              <Button key={`btn-${btn}`} onClick={() => handleCalcBtn(btn)} style={{ padding: '15px 0', backgroundColor: btn === 'C' ? '#f44336' : (btn === '=' ? '#4CAF50' : '#666') }}>{btn}</Button>
             ))}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '15px' }}>
-            {['通常', 'ケレン', '修理', '完全'].map(t => <Button key={t} onClick={() => addToCart(t)} style={{ backgroundColor: getTypeColor(t), color:'white' }}>{t}保存</Button>)}
+            {['通常', 'ケレン', '修理', '完全'].map(t => <Button key={`save-${t}`} onClick={() => addToCart(t)} style={{ backgroundColor: getTypeColor(t), color:'white' }}>{t}保存</Button>)}
           </div>
           {editingIndex !== null && <Button modifier="quiet" onClick={deleteItem} style={{ color: '#f44336', marginTop: '10px' }}>削除</Button>}
         </div>
