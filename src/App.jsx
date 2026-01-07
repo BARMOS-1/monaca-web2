@@ -34,29 +34,46 @@ function App() {
   const [calcDisplay, setCalcDisplay] = useState(''); 
   const [editingIndex, setEditingIndex] = useState(null);
 
-  // --- 1. ログイン認証処理 (JSONP方式) ---
+
+// --- 1. ログイン認証処理 (リダイレクト対策・強化版) ---
   const handleLogin = () => {
     if (!inputPass) { alert("パスワードを入力してください"); return; }
     setLoading(true);
+    
     const callbackName = "login_cb_" + Date.now();
+    
+    // JSONPのコールバック関数を定義
     window[callbackName] = (data) => {
       setLoading(false);
       if (data.result === "success") {
         setAuthToken(inputPass);
         setIsLoggedIn(true);
-        fetchHistory(inputPass); // ログイン成功時に履歴取得
+        // 履歴取得も同じように対策したものを呼び出す
+        fetchHistory(inputPass); 
       } else {
-        alert("パスワードが正しくありません");
+        // GASからエラーが返ってきた場合、内容をアラートに出す
+        alert("認証エラー: " + (data.message || "パスワードが違います"));
         setInputPass("");
       }
       delete window[callbackName];
       const scriptTag = document.getElementById(callbackName);
       if (scriptTag) document.body.removeChild(scriptTag);
     };
+
+    // 【重要】URLの組み立て方を変えます
+    // URL自体に auth を含めることで、リダイレクト時の欠落を防ぎます
     const script = document.createElement("script");
     script.id = callbackName;
-    script.src = `${GAS_URL}?auth=${encodeURIComponent(inputPass)}&callback=${callbackName}&_=${Date.now()}`;
-    script.onerror = () => { setLoading(false); alert("通信エラー"); };
+    
+    // GAS_URL自体に ? が含まれているかチェックして結合
+    const separator = GAS_URL.includes('?') ? '&' : '?';
+    script.src = `${GAS_URL}${separator}auth=${encodeURIComponent(inputPass)}&callback=${callbackName}&_=${Date.now()}`;
+
+    script.onerror = () => { 
+      setLoading(false); 
+      alert("ネットワークエラーが発生しました。GASのURLと公開設定を確認してください。"); 
+    };
+    
     document.body.appendChild(script);
   };
 
