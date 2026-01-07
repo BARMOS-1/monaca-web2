@@ -20,7 +20,7 @@ const MATERIALS = [
 ];
 
 // App.js
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzKVWHXiTdqR30nQQy3V17A6KtzLYjFZj75G_jtliZqvSiOCkh5bk_h2A9rCPX-1ZWsvg/echo";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzKVWHXiTdqR30nQQy3V17A6KtzLYjFZj75G_jtliZqvSiOCkh5bk_h2A9rCPX-1ZWsvg/exec";
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -36,46 +36,62 @@ function App() {
   const [editingIndex, setEditingIndex] = useState(null);
 
 
-// --- 1. ログイン認証処理 (リダイレクト対策・強化版) ---
-  const handleLogin = () => {
+// --- 1. ログイン認証処理 (POST方式への切り替え) ---
+  const handleLogin = async () => {
     if (!inputPass) { alert("パスワードを入力してください"); return; }
     setLoading(true);
-    
-    const callbackName = "login_cb_" + Date.now();
-    
-    // JSONPのコールバック関数を定義
-    window[callbackName] = (data) => {
-      setLoading(false);
+
+    try {
+      // JSONP(Scriptタグ)ではなく、fetch(POST)を使います
+      const response = await fetch(GAS_URL, {
+        method: "POST",
+        mode: "cors", 
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ 
+          auth: inputPass, 
+          mode: "login" 
+        })
+      });
+
+      const data = await response.json();
+
       if (data.result === "success") {
         setAuthToken(inputPass);
         setIsLoggedIn(true);
-        // 履歴取得も同じように対策したものを呼び出す
-        fetchHistory(inputPass); 
+        // ログイン成功後、履歴取得もPOSTで行うように変更します
+        fetchHistoryByPost(inputPass);
       } else {
-        // GASからエラーが返ってきた場合、内容をアラートに出す
-        alert("認証エラー: " + (data.message || "パスワードが違います"));
+        alert("認証エラー: パスワードが正しくありません");
         setInputPass("");
       }
-      delete window[callbackName];
-      const scriptTag = document.getElementById(callbackName);
-      if (scriptTag) document.body.removeChild(scriptTag);
-    };
+    } catch (e) {
+      console.error(e);
+      alert("通信エラーが発生しました。GASのURLが正しいか、公開設定が『全員』になっているか確認してください。");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    // 【重要】URLの組み立て方を変えます
-    // URL自体に auth を含めることで、リダイレクト時の欠落を防ぎます
-    const script = document.createElement("script");
-    script.id = callbackName;
-    
-    // GAS_URL自体に ? が含まれているかチェックして結合
-    const separator = GAS_URL.includes('?') ? '&' : '?';
-    script.src = `${GAS_URL}${separator}auth=${encodeURIComponent(inputPass)}&callback=${callbackName}&_=${Date.now()}`;
-
-    script.onerror = () => { 
-      setLoading(false); 
-      alert("ネットワークエラーが発生しました。GASのURLと公開設定を確認してください。"); 
-    };
-    
-    document.body.appendChild(script);
+  // --- 履歴取得もPOST方式に修正 ---
+  const fetchHistoryByPost = async (token = authToken) => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const response = await fetch(GAS_URL, {
+        method: "POST",
+        mode: "cors",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ auth: token, mode: "history" })
+      });
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        processHistoryData(data);
+      }
+    } catch (e) {
+      console.error("履歴取得エラー:", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // --- 2. 履歴取得 (GitHub Pages対策でJSONP方式に変更) ---
